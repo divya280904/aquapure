@@ -33,19 +33,39 @@ export default function AppTabs() {
   );
 }
 
-export function TabButton({ children, isFocused, ...props }: TabTriggerSlotProps) {
+
+export function TabButton({
+  children,
+  isFocused,
+  style,
+  ref: _ref,
+  ...props
+}: TabTriggerSlotProps) {
   return (
-    <Pressable {...props} style={({ pressed }) => pressed && styles.pressed}>
+    <Pressable
+      {...props}
+      style={({ pressed, hovered }) => [
+        typeof style === "function"
+          ? style({ pressed, hovered })
+          : style,
+        pressed ? styles.pressed : undefined,
+      ]}
+    >
       <ThemedView
-        type={isFocused ? 'backgroundSelected' : 'backgroundElement'}
-        style={styles.tabButtonView}>
-        <ThemedText type="small" themeColor={isFocused ? 'text' : 'textSecondary'}>
+        type={isFocused ? "backgroundSelected" : "backgroundElement"}
+        style={styles.tabButtonView}
+      >
+        <ThemedText
+          type="small"
+          themeColor={isFocused ? "text" : "textSecondary"}
+        >
           {children}
         </ThemedText>
       </ThemedView>
     </Pressable>
   );
 }
+
 
 export function CustomTabList(props: TabListProps) {
   const scheme = useColorScheme();
