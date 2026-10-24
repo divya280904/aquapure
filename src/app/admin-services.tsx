@@ -1,4 +1,3 @@
-
 import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -22,6 +21,7 @@ import {
 } from "firebase/firestore";
 import { getIdTokenResult } from "firebase/auth";
 import { auth, db } from "../../firebase";
+import { waitForAuth } from "@/utils/waitForAuth";
 
 type ServiceRequest = {
   id: string;
@@ -70,64 +70,64 @@ export default function AdminServicesScreen() {
   const [updatingId, setUpdatingId] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
 
-  const loadRequests = useCallback(async (isRefresh = false) => {
-    if (isRefresh) setRefreshing(true);
-    else setLoading(true);
+  const loadRequests = useCallback(
+    async (isRefresh = false) => {
+      if (isRefresh) setRefreshing(true);
+      else setLoading(true);
 
-    try {
-      const user = auth.currentUser;
+      try {
+        const user = await waitForAuth();
 
-      if (!user) {
-        router.replace("/auth");
-        return;
-      }
+        if (!user) {
+          router.replace("/auth");
+          return;
+        }
 
-      const token = await getIdTokenResult(user, true);
+        const token = await getIdTokenResult(user, true);
 
-      if (token.claims.admin !== true) {
-        Alert.alert(
-          "Access denied",
-          "Only administrators can access the Service Desk."
+        if (token.claims.admin !== true) {
+          Alert.alert(
+            "Access denied",
+            "Only administrators can access the Service Desk.",
+          );
+          router.replace("/");
+          return;
+        }
+
+        const requestsQuery = query(
+          collection(db, "serviceRequests"),
+          orderBy("createdAt", "desc"),
         );
-        router.replace("/");
-        return;
+
+        const snapshot = await getDocs(requestsQuery);
+
+        const data = snapshot.docs.map((item) => ({
+          id: item.id,
+          ...item.data(),
+        })) as ServiceRequest[];
+
+        setRequests(data);
+      } catch (error) {
+        console.error("Loading service requests failed:", error);
+        Alert.alert(
+          "Unable to load requests",
+          "Check your connection and Firestore permissions.",
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
       }
-
-      const requestsQuery = query(
-        collection(db, "serviceRequests"),
-        orderBy("createdAt", "desc")
-      );
-
-      const snapshot = await getDocs(requestsQuery);
-
-      const data = snapshot.docs.map((item) => ({
-        id: item.id,
-        ...item.data(),
-      })) as ServiceRequest[];
-
-      setRequests(data);
-    } catch (error) {
-      console.error("Loading service requests failed:", error);
-      Alert.alert(
-        "Unable to load requests",
-        "Check your connection and Firestore permissions."
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, [router]);
+    },
+    [router],
+  );
 
   useFocusEffect(
     useCallback(() => {
       void loadRequests();
-    }, [loadRequests])
+    }, [loadRequests]),
   );
 
-  async function updateStatus(
-    requestId: string,
-    newStatus: string
-  ) {
+  async function updateStatus(requestId: string, newStatus: string) {
     try {
       setUpdatingId(requestId);
 
@@ -148,8 +148,8 @@ export default function AdminServicesScreen() {
         previous.map((request) =>
           request.id === requestId
             ? { ...request, status: newStatus }
-            : request
-        )
+            : request,
+        ),
       );
 
       Alert.alert("Updated", `Status changed to ${formatStatus(newStatus)}.`);
@@ -159,17 +159,14 @@ export default function AdminServicesScreen() {
         "Update failed",
         error instanceof Error
           ? error.message
-          : "Check your Firestore rules and try again."
+          : "Check your Firestore rules and try again.",
       );
     } finally {
       setUpdatingId("");
     }
   }
 
-  function confirmStatusChange(
-    requestId: string,
-    newStatus: string
-  ) {
+  function confirmStatusChange(requestId: string, newStatus: string) {
     Alert.alert(
       "Update service status",
       `Change this request to "${formatStatus(newStatus)}"?`,
@@ -181,7 +178,7 @@ export default function AdminServicesScreen() {
             void updateStatus(requestId, newStatus);
           },
         },
-      ]
+      ],
     );
   }
 
@@ -228,8 +225,7 @@ export default function AdminServicesScreen() {
               <Text style={styles.summaryLabel}>Total requests</Text>
               <Text style={styles.summaryValue}>{requests.length}</Text>
               <Text style={styles.summaryPending}>
-                Pending:{" "}
-                {requests.filter((r) => r.status === "pending").length}
+                Pending: {requests.filter((r) => r.status === "pending").length}
               </Text>
             </View>
 
@@ -278,9 +274,7 @@ export default function AdminServicesScreen() {
             <View style={styles.cardTop}>
               <View style={styles.cardTitleArea}>
                 <Text style={styles.serviceType}>{item.serviceType}</Text>
-                <Text style={styles.requestId}>
-                  ID: {item.id.slice(0, 10)}
-                </Text>
+                <Text style={styles.requestId}>ID: {item.id.slice(0, 10)}</Text>
               </View>
               <View style={styles.statusBadge}>
                 <Text style={styles.statusText}>
@@ -291,9 +285,7 @@ export default function AdminServicesScreen() {
 
             <Text style={styles.customerName}>{item.customerName}</Text>
             <Text style={styles.detail}>☎ {item.phone}</Text>
-            {!!item.email && (
-              <Text style={styles.detail}>✉ {item.email}</Text>
-            )}
+            {!!item.email && <Text style={styles.detail}>✉ {item.email}</Text>}
             <Text style={styles.detail}>Address: {item.address}</Text>
 
             <View style={styles.infoBox}>
@@ -303,9 +295,7 @@ export default function AdminServicesScreen() {
               </Text>
 
               <Text style={styles.infoLabel}>Submitted</Text>
-              <Text style={styles.infoValue}>
-                {formatDate(item.createdAt)}
-              </Text>
+              <Text style={styles.infoValue}>{formatDate(item.createdAt)}</Text>
 
               {!!item.description && (
                 <>
@@ -323,9 +313,7 @@ export default function AdminServicesScreen() {
                   <Pressable
                     key={status}
                     disabled={updatingId === item.id}
-                    onPress={() =>
-                      confirmStatusChange(item.id, status)
-                    }
+                    onPress={() => confirmStatusChange(item.id, status)}
                     style={[
                       styles.statusOption,
                       updatingId === item.id && styles.disabled,
@@ -339,10 +327,7 @@ export default function AdminServicesScreen() {
             </View>
 
             {updatingId === item.id && (
-              <ActivityIndicator
-                color="#087E8B"
-                style={styles.updating}
-              />
+              <ActivityIndicator color="#087E8B" style={styles.updating} />
             )}
           </View>
         )}

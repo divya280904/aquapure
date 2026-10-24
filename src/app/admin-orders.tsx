@@ -14,6 +14,7 @@ import { useFocusEffect, useRouter } from "expo-router";
 import { collection, doc, getDocs, orderBy, query } from "firebase/firestore";
 import { getIdTokenResult } from "firebase/auth";
 import { auth, db } from "../../firebase";
+import { waitForAuth } from "@/utils/waitForAuth";
 
 type OrderItem = {
   productId: string;
@@ -59,10 +60,9 @@ export default function AdminOrdersScreen() {
 
   const loadOrders = useCallback(async () => {
     try {
-      const user = auth.currentUser;
+      const user = await waitForAuth();
 
       if (!user) {
-        Alert.alert("Access denied", "Please sign in as an admin.");
         router.replace("/auth");
         return;
       }
