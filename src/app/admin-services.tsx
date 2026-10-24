@@ -1,18 +1,7 @@
-import React, { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  FlatList,
-  Linking,
-  Platform,
-  Pressable,
-  RefreshControl,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { SafeAreaView } from "react-native-safe-area-context";
+import { waitForAuth } from "@/utils/waitForAuth";
+import { Ionicons } from "@expo/vector-icons";
 import { useFocusEffect, useRouter } from "expo-router";
+import { getIdTokenResult } from "firebase/auth";
 import {
   collection,
   doc,
@@ -21,10 +10,22 @@ import {
   query,
   updateDoc,
 } from "firebase/firestore";
-import { getIdTokenResult } from "firebase/auth";
+import { useCallback, useState } from "react";
+import {
+  ActivityIndicator,
+  Alert,
+  FlatList,
+  Linking,
+  Modal,
+  Platform,
+  Pressable,
+  RefreshControl,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { auth, db } from "../../firebase";
-import { waitForAuth } from "@/utils/waitForAuth";
-import { Ionicons } from "@expo/vector-icons";
 import { API_BASE_URL } from "../constants/api";
 
 type ServiceRequest = {
@@ -75,6 +76,10 @@ export default function AdminServicesScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState("");
   const [selectedStatus, setSelectedStatus] = useState("all");
+  const [selectedRequest, setSelectedRequest] = useState<ServiceRequest | null>(
+    null,
+  );
+  const [statusModalVisible, setStatusModalVisible] = useState(false);
 
   const loadRequests = useCallback(
     async (isRefresh = false) => {
@@ -135,7 +140,12 @@ export default function AdminServicesScreen() {
 
   function openInMap(address: string, lat?: number, lng?: number) {
     let url = "";
-    if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+    if (
+      lat != null &&
+      lng != null &&
+      Number.isFinite(lat) &&
+      Number.isFinite(lng)
+    ) {
       url = Platform.select({
         ios: `maps:0,0?q=${lat},${lng}`,
         android: `geo:${lat},${lng}?q=${lat},${lng}(AquaPure+Service)`,
@@ -147,7 +157,9 @@ export default function AdminServicesScreen() {
 
     Linking.openURL(url).catch((err) => {
       console.warn("Could not open native map URL:", err);
-      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`);
+      Linking.openURL(
+        `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`,
+      );
     });
   }
 
@@ -179,7 +191,10 @@ export default function AdminServicesScreen() {
           throw new Error(result.error || "Backend update failed");
         }
       } catch (backendError) {
-        console.warn("Backend service status call failed, using client fallback:", backendError);
+        console.warn(
+          "Backend service status call failed, using client fallback:",
+          backendError,
+        );
         await updateDoc(doc(db, "serviceRequests", requestId), {
           status: newStatus,
           updatedAt: new Date(),
@@ -208,20 +223,9 @@ export default function AdminServicesScreen() {
     }
   }
 
-  function confirmStatusChange(requestId: string, newStatus: string) {
-    Alert.alert(
-      "Update service status",
-      `Change this request to "${formatStatus(newStatus)}"?`,
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Confirm",
-          onPress: () => {
-            void updateStatus(requestId, newStatus);
-          },
-        },
-      ],
-    );
+  function changeStatus(request: ServiceRequest) {
+    setSelectedRequest(request);
+    setStatusModalVisible(true);
   }
 
   const filteredRequests =
@@ -328,17 +332,20 @@ export default function AdminServicesScreen() {
             <Text style={styles.customerName}>{item.customerName}</Text>
             <Text style={styles.detail}>☎ {item.phone}</Text>
             {!!item.email && <Text style={styles.detail}>✉ {item.email}</Text>}
-            
+
             <View style={styles.addressBox}>
               <Text style={styles.detail}>Address: {item.address}</Text>
               {item.latitude != null && item.longitude != null && (
                 <Text style={styles.coordsBadge}>
-                  📍 GPS: {Number(item.latitude).toFixed(5)}, {Number(item.longitude).toFixed(5)}
+                  📍 GPS: {Number(item.latitude).toFixed(5)},{" "}
+                  {Number(item.longitude).toFixed(5)}
                 </Text>
               )}
               <Pressable
                 style={styles.openMapButton}
-                onPress={() => openInMap(item.address, item.latitude, item.longitude)}
+                onPress={() =>
+                  openInMap(item.address, item.latitude, item.longitude)
+                }
               >
                 <Ionicons name="map-outline" size={14} color="#087E8B" />
                 <Text style={styles.openMapText}>Open in Map</Text>
@@ -363,25 +370,21 @@ export default function AdminServicesScreen() {
             </View>
 
             <Text style={styles.updateHeading}>Update status</Text>
-            <View style={styles.statusOptions}>
-              {statuses
-                .filter((status) => status !== item.status)
-                .map((status) => (
-                  <Pressable
-                    key={status}
-                    disabled={updatingId === item.id}
-                    onPress={() => confirmStatusChange(item.id, status)}
-                    style={[
-                      styles.statusOption,
-                      updatingId === item.id && styles.disabled,
-                    ]}
-                  >
-                    <Text style={styles.statusOptionText}>
-                      {formatStatus(status)}
-                    </Text>
-                  </Pressable>
-                ))}
-            </View>
+
+            <Pressable
+              style={[
+                styles.openMapButton,
+                updatingId === item.id && styles.disabled,
+              ]}
+              disabled={updatingId === item.id}
+              onPress={() => changeStatus(item)}
+            >
+              <Text style={styles.openMapText}>
+                {updatingId === item.id
+                  ? "Updating..."
+                  : "Update Service Status"}
+              </Text>
+            </Pressable>
 
             {updatingId === item.id && (
               <ActivityIndicator color="#087E8B" style={styles.updating} />
@@ -389,6 +392,92 @@ export default function AdminServicesScreen() {
           </View>
         )}
       />
+      <Modal
+        visible={statusModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStatusModalVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 16,
+              padding: 22,
+              width: "100%",
+              maxWidth: 400,
+            }}
+          >
+            <Text
+              style={{
+                fontSize: 20,
+                fontWeight: "700",
+                marginBottom: 6,
+                color: "#0F172A",
+              }}
+            >
+              Update service status
+            </Text>
+
+            <Text style={{ color: "#64748B", marginBottom: 18 }}>
+              Request #{selectedRequest?.id.slice(-6)}
+            </Text>
+
+            {statuses
+              .filter((status) => status !== selectedRequest?.status)
+              .map((status) => (
+                <Pressable
+                  key={status}
+                  disabled={
+                    selectedRequest ? updatingId === selectedRequest.id : true
+                  }
+                  onPress={async () => {
+                    if (!selectedRequest) return;
+
+                    const requestId = selectedRequest.id;
+
+                    setStatusModalVisible(false);
+                    await updateStatus(requestId, status);
+                  }}
+                  style={{
+                    paddingVertical: 13,
+                    paddingHorizontal: 14,
+                    borderRadius: 8,
+                    backgroundColor: "#F1F5F9",
+                    marginBottom: 8,
+                  }}
+                >
+                  <Text
+                    style={{
+                      color: "#0F172A",
+                      fontSize: 16,
+                      fontWeight: "600",
+                    }}
+                  >
+                    {formatStatus(status)}
+                  </Text>
+                </Pressable>
+              ))}
+
+            <Pressable
+              onPress={() => setStatusModalVisible(false)}
+              style={{ padding: 12, alignItems: "center" }}
+            >
+              <Text style={{ color: "#64748B", fontWeight: "600" }}>
+                Cancel
+              </Text>
+            </Pressable>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
