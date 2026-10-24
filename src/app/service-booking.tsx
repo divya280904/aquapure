@@ -141,7 +141,7 @@ export default function ServiceBookingScreen() {
 
   function handleLocationSelected(coords: LocationCoordinates, suggestedAddress?: string) {
     setCoordinates(coords);
-    if (suggestedAddress && (!address.trim() || address === "")) {
+    if (suggestedAddress) {
       setAddress(suggestedAddress);
     }
   }

@@ -36,7 +36,13 @@
         }
       ],
       "expo-notifications",
-      "expo-image"
+      "expo-image",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "Allow AquaPure to access your location to detect your service address."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true,

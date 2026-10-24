@@ -47,81 +47,177 @@ export default function MapAddressPicker({
 
   async function handleUseCurrentLocation() {
     setLocating(true);
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      setPermissionStatus(status);
 
-      if (status !== "granted") {
+    // Watchdog timer: ensure button NEVER stays in loading state for more than 8 seconds
+    const watchdog = setTimeout(() => {
+      setLocating(false);
+      Alert.alert(
+        "Location Request Timed Out",
+        "Could not detect your GPS location in time. Please check your device location settings, or tap the map directly to place your pin."
+      );
+    }, 8000);
+
+    try {
+      // 1. Check if location services are enabled on the device
+      const isServiceEnabled = await Location.hasServicesEnabledAsync().catch(() => true);
+      if (!isServiceEnabled) {
+        clearTimeout(watchdog);
+        setLocating(false);
         Alert.alert(
-          "Location Permission Denied",
-          "Permission to access location was denied. You can manually enter your address or tap on the map to pin your location."
+          "Location Services Disabled",
+          "Please enable GPS / Location in your device quick settings, or tap directly on the map to pick your address."
         );
         return;
       }
 
-      const location = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      });
+      // 2. Check and request foreground permissions
+      let perm = await Location.getForegroundPermissionsAsync().catch(() => null);
+      if (!perm || perm.status !== "granted") {
+        perm = await Location.requestForegroundPermissionsAsync().catch(() => null);
+      }
+
+      if (!perm || perm.status !== "granted") {
+        clearTimeout(watchdog);
+        setLocating(false);
+        Alert.alert(
+          "Location Permission Required",
+          "Permission to access location was not granted. Please enable location permissions in device settings, or tap on the map to pin your location."
+        );
+        return;
+      }
+
+      // 3. Fast-path: Try to get last known location from device cache first (<50ms)
+      let location: Location.LocationObject | null = null;
+      try {
+        location = await Location.getLastKnownPositionAsync({
+          maxAge: 300000, // up to 5 minutes old cache
+        });
+      } catch (cacheErr) {
+        console.log("No cached location found:", cacheErr);
+      }
+
+      // 4. If no cached location, request fresh position with a strict timeout race (5 seconds)
+      if (!location || !location.coords) {
+        const positionPromise = Location.getCurrentPositionAsync({
+          accuracy: Location.Accuracy.Balanced,
+        });
+
+        const timeoutPromise = new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error("LOCATION_TIMEOUT")), 5000)
+        );
+
+        try {
+          location = await Promise.race([positionPromise, timeoutPromise]);
+        } catch (err: any) {
+          // If Balanced accuracy timed out, quickly try Lowest accuracy (uses cell/Wi-Fi towers, nearly instant)
+          try {
+            const lowAccPromise = Location.getCurrentPositionAsync({
+              accuracy: Location.Accuracy.Lowest,
+            });
+            const lowAccTimeout = new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error("LOW_ACC_TIMEOUT")), 2500)
+            );
+            location = await Promise.race([lowAccPromise, lowAccTimeout]);
+          } catch (lowErr) {
+            console.warn("Lowest accuracy fallback also failed:", lowErr);
+          }
+        }
+      }
+
+      if (!location || !location.coords) {
+        clearTimeout(watchdog);
+        setLocating(false);
+        Alert.alert(
+          "GPS Signal Weak",
+          "Could not acquire satellite GPS fix in time. Please ensure device location is on, or tap directly on the map to place your pin."
+        );
+        return;
+      }
 
       const newCoords: LocationCoordinates = {
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
+        latitude: Number(location.coords.latitude.toFixed(6)),
+        longitude: Number(location.coords.longitude.toFixed(6)),
       };
 
       setCurrentCoords(newCoords);
 
       // Send update to Leaflet map inside WebView
       if (webViewRef.current) {
-        webViewRef.current.postMessage(
-          JSON.stringify({
-            type: "SET_CENTER",
-            lat: newCoords.latitude,
-            lng: newCoords.longitude,
-          })
-        );
-      }
-
-      // Reverse geocode to get human-readable address
-      let formattedAddress = "";
-      try {
-        const reverseResults = await Location.reverseGeocodeAsync({
-          latitude: newCoords.latitude,
-          longitude: newCoords.longitude,
-        });
-
-        if (reverseResults && reverseResults.length > 0) {
-          const item = reverseResults[0];
-          const parts = [
-            item.name,
-            item.street,
-            item.district || item.subregion,
-            item.city,
-            item.region,
-            item.postalCode,
-          ].filter(Boolean);
-
-          formattedAddress = parts.join(", ");
+        try {
+          webViewRef.current.postMessage(
+            JSON.stringify({
+              type: "SET_CENTER",
+              lat: newCoords.latitude,
+              lng: newCoords.longitude,
+            })
+          );
+        } catch (postErr) {
+          console.warn("Map postMessage error:", postErr);
         }
-      } catch (geoError) {
-        console.warn("Reverse geocoding error:", geoError);
       }
 
-      onLocationSelected(newCoords, formattedAddress || undefined);
-    } catch (error) {
+      // Immediately notify parent with coordinates
+      onLocationSelected(newCoords);
+
+      // Clear watchdog and stop loading spinner immediately for instant responsiveness!
+      clearTimeout(watchdog);
+      setLocating(false);
+
+      // 5. Asynchronously reverse geocode in background without blocking button or UI
+      (async () => {
+        try {
+          const geoPromise = Location.reverseGeocodeAsync({
+            latitude: newCoords.latitude,
+            longitude: newCoords.longitude,
+          });
+          const geoTimeout = new Promise<null>((resolve) =>
+            setTimeout(() => resolve(null), 3500)
+          );
+          const reverseResults = await Promise.race([geoPromise, geoTimeout]);
+
+          if (reverseResults && reverseResults.length > 0) {
+            const item = reverseResults[0];
+            const parts = [
+              item.name,
+              item.street,
+              item.district || item.subregion,
+              item.city,
+              item.region,
+              item.postalCode,
+            ].filter(Boolean);
+
+            const formattedAddress = parts.join(", ");
+            if (formattedAddress) {
+              onLocationSelected(newCoords, formattedAddress);
+            }
+          }
+        } catch (geoError) {
+          console.warn("Background reverse geocode error:", geoError);
+        }
+      })();
+
+      return;
+    } catch (error: any) {
       console.error("Get location error:", error);
+      clearTimeout(watchdog);
+      setLocating(false);
       Alert.alert(
         "Location Unavailable",
         "Could not detect your current location. Please verify device GPS is enabled, or type your address manually."
       );
     } finally {
+      clearTimeout(watchdog);
       setLocating(false);
     }
   }
 
   function handleWebViewMessage(event: any) {
     try {
-      const data = JSON.parse(event.nativeEvent.data);
-      if (data.type === "PIN_MOVED" && typeof data.lat === "number" && typeof data.lng === "number") {
+      const data = typeof event.nativeEvent.data === "string"
+        ? JSON.parse(event.nativeEvent.data)
+        : event.nativeEvent.data;
+
+      if (data && data.type === "PIN_MOVED" && typeof data.lat === "number" && typeof data.lng === "number") {
         const coords: LocationCoordinates = {
           latitude: Number(data.lat.toFixed(6)),
           longitude: Number(data.lng.toFixed(6)),
@@ -167,53 +263,50 @@ export default function MapAddressPicker({
         <div class="pin-hint">Tap map or drag pin to adjust location</div>
         <div id="map"></div>
         <script>
-          var lat = ${currentCoords.latitude};
-          var lng = ${currentCoords.longitude};
-          var map = L.map('map', { zoomControl: true }).setView([lat, lng], 14);
+          try {
+            var lat = ${currentCoords.latitude};
+            var lng = ${currentCoords.longitude};
+            var map = L.map('map', { zoomControl: true }).setView([lat, lng], 14);
 
-          L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            maxZoom: 19,
-            attribution: '© OpenStreetMap'
-          }).addTo(map);
+            L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+              maxZoom: 19,
+              attribution: '© OpenStreetMap'
+            }).addTo(map);
 
-          var marker = L.marker([lat, lng], { draggable: true }).addTo(map);
+            var marker = L.marker([lat, lng], { draggable: true }).addTo(map);
 
-          function postCoords(lat, lng) {
-            var payload = JSON.stringify({ type: 'PIN_MOVED', lat: lat, lng: lng });
-            if (window.ReactNativeWebView) {
-              window.ReactNativeWebView.postMessage(payload);
+            function postCoords(lat, lng) {
+              var payload = JSON.stringify({ type: 'PIN_MOVED', lat: lat, lng: lng });
+              if (window.ReactNativeWebView) {
+                window.ReactNativeWebView.postMessage(payload);
+              }
             }
+
+            marker.on('dragend', function(e) {
+              var pos = marker.getLatLng();
+              postCoords(pos.lat, pos.lng);
+            });
+
+            map.on('click', function(e) {
+              marker.setLatLng(e.latlng);
+              postCoords(e.latlng.lat, e.latlng.lng);
+            });
+
+            function handleCenterMessage(event) {
+              try {
+                var data = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+                if (data && data.type === 'SET_CENTER' && map && marker) {
+                  map.setView([data.lat, data.lng], 15);
+                  marker.setLatLng([data.lat, data.lng]);
+                }
+              } catch(e) {}
+            }
+
+            window.addEventListener('message', handleCenterMessage);
+            document.addEventListener('message', handleCenterMessage);
+          } catch(initErr) {
+            console.warn('Map initialization error:', initErr);
           }
-
-          marker.on('dragend', function(e) {
-            var pos = marker.getLatLng();
-            postCoords(pos.lat, pos.lng);
-          });
-
-          map.on('click', function(e) {
-            marker.setLatLng(e.latlng);
-            postCoords(e.latlng.lat, e.latlng.lng);
-          });
-
-          window.addEventListener('message', function(event) {
-            try {
-              var msg = JSON.parse(event.data);
-              if (msg.type === 'SET_CENTER') {
-                map.setView([msg.lat, msg.lng], 15);
-                marker.setLatLng([msg.lat, msg.lng]);
-              }
-            } catch(e) {}
-          });
-
-          document.addEventListener('message', function(event) {
-            try {
-              var msg = JSON.parse(event.data);
-              if (msg.type === 'SET_CENTER') {
-                map.setView([msg.lat, msg.lng], 15);
-                marker.setLatLng([msg.lat, msg.lng]);
-              }
-            } catch(e) {}
-          });
         </script>
       </body>
     </html>
