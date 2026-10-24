@@ -370,9 +370,13 @@ export default function HomeScreen() {
                 </Pressable>
 
                 {/* Cart count */}
-                <View style={styles.cartBadge}>
+                <TouchableOpacity
+                  style={styles.cartBadge}
+                  onPress={() => router.push("/cart")}
+                  activeOpacity={0.7}
+                >
                   <Text style={styles.cartText}>🛒 {cartCount}</Text>
-                </View>
+                </TouchableOpacity>
               </View>
             </View>
 
@@ -443,26 +447,24 @@ export default function HomeScreen() {
         renderItem={({ item }) => (
           /* Product card */
           <View style={styles.card}>
-            
-<View style={styles.productImage}>
-  <View style={styles.productPhotoContainer}>
-    {item.imageUrl ? (
-      <Image
-        source={{ uri: item.imageUrl }}
-        style={styles.productPhoto}
-        resizeMode="contain"
-        onError={() =>
-          console.log("Image failed:", item.name, item.imageUrl)
-        }
-      />
-    ) : (
-      <Text style={styles.productEmoji}>{item.emoji}</Text>
-    )}
-  </View>
+            <View style={styles.productImage}>
+              <View style={styles.productPhotoContainer}>
+                {item.imageUrl ? (
+                  <Image
+                    source={{ uri: item.imageUrl }}
+                    style={styles.productPhoto}
+                    resizeMode="contain"
+                    onError={() =>
+                      console.log("Image failed:", item.name, item.imageUrl)
+                    }
+                  />
+                ) : (
+                  <Text style={styles.productEmoji}>{item.emoji}</Text>
+                )}
+              </View>
 
-  <Text style={styles.productCategory}>{item.category}</Text>
-</View>
-
+              <Text style={styles.productCategory}>{item.category}</Text>
+            </View>
 
             <Text style={styles.productName} numberOfLines={2}>
               {item.name}
@@ -900,20 +902,19 @@ const styles = StyleSheet.create({
   removeCartText: {
     fontSize: 15,
   },
-  
-productPhotoContainer: {
-  height: 125,
-  width: "100%",
-  alignItems: "center",
-  justifyContent: "center",
-  backgroundColor: "#FFFFFF",
-  borderRadius: 10,
-  overflow: "hidden",
-},
 
-productPhoto: {
-  width: "100%",
-  height: "100%",
-},
+  productPhotoContainer: {
+    height: 125,
+    width: "100%",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#FFFFFF",
+    borderRadius: 10,
+    overflow: "hidden",
+  },
 
+  productPhoto: {
+    width: "100%",
+    height: "100%",
+  },
 });

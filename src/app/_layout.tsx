@@ -34,6 +34,7 @@ export default function RootLayout() {
           <Stack.Screen name="auth" options={{ title: "AquaPure Account" }} />
           <Stack.Screen name="checkout" options={{ title: "Checkout" }} />
           <Stack.Screen name="orders" options={{ title: "My Orders" }} />
+          <Stack.Screen name="cart" options={{ title: "My Cart" }} />
         </Stack>
       </ThemeProvider>
     </CartProvider>
