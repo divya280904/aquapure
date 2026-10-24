@@ -1,0 +1,23 @@
+
+{
+  "cleanUrls": true,
+  "trailingSlash": false,
+  "rewrites": [
+    {
+      "source": "/admin",
+      "destination": "/admin.html"
+    },
+    {
+      "source": "/admin-orders",
+      "destination": "/admin-orders.html"
+    },
+    {
+      "source": "/admin-products",
+      "destination": "/admin-products.html"
+    },
+    {
+      "source": "/admin-services",
+      "destination": "/admin-services.html"
+    }
+  ]
+}
