@@ -2,6 +2,10 @@ import { DarkTheme, DefaultTheme, ThemeProvider, Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { useColorScheme } from "react-native";
 import { CartProvider } from "../context/CartContext";
+import { useEffect } from "react";
+import { onAuthStateChanged } from "firebase/auth";
+import { auth } from "../../firebase";
+import { registerForPushNotifications } from "../utils/notifications";
 
 import { AnimatedSplashOverlay } from "@/components/animated-icon";
 
@@ -9,6 +13,16 @@ SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        void registerForPushNotifications();
+      }
+    });
+
+    return unsubscribe;
+  }, []);
 
   return (
     <CartProvider>
