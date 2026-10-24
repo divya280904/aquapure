@@ -35,6 +35,9 @@
     "react-native-worklets": "0.13.0"
   },
   "devDependencies": {
+    "@react-native/babel-preset": "^0.88.0",
+    "@react-native/metro-babel-transformer": "^0.88.0",
+    "@react-native/metro-config": "^0.88.0",
     "@types/react": "~19.3.0",
     "typescript": "~6.0.3"
   },
