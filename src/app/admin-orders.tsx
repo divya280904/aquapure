@@ -1,4 +1,3 @@
-
 import { useCallback, useState } from "react";
 import {
   ActivityIndicator,
@@ -17,7 +16,6 @@ import {
   getDocs,
   orderBy,
   query,
-  updateDoc,
 } from "firebase/firestore";
 import { getIdTokenResult } from "firebase/auth";
 import { auth, db } from "../../firebase";
@@ -82,7 +80,7 @@ export default function AdminOrdersScreen() {
 
       const ordersQuery = query(
         collection(db, "orders"),
-        orderBy("createdAt", "desc")
+        orderBy("createdAt", "desc"),
       );
 
       const snapshot = await getDocs(ordersQuery);
@@ -97,7 +95,7 @@ export default function AdminOrdersScreen() {
       console.error("Load orders error:", error);
       Alert.alert(
         "Unable to load orders",
-        "Check your internet connection and Firestore rules."
+        "Check your internet connection and Firestore rules.",
       );
     } finally {
       setLoading(false);
@@ -108,25 +106,21 @@ export default function AdminOrdersScreen() {
   useFocusEffect(
     useCallback(() => {
       loadOrders();
-    }, [loadOrders])
+    }, [loadOrders]),
   );
 
   const changeStatus = (order: Order) => {
     const availableStatuses = ORDER_STATUSES.filter(
-      (status) => status !== order.status
+      (status) => status !== order.status,
     );
 
-    Alert.alert(
-      "Update order status",
-      `Order #${order.id.slice(-6)}`,
-      [
-        { text: "Cancel", style: "cancel" },
-        ...availableStatuses.map((status) => ({
-          text: status.charAt(0).toUpperCase() + status.slice(1),
-          onPress: () => saveStatus(order.id, status),
-        })),
-      ]
-    );
+    Alert.alert("Update order status", `Order #${order.id.slice(-6)}`, [
+      { text: "Cancel", style: "cancel" },
+      ...availableStatuses.map((status) => ({
+        text: status.charAt(0).toUpperCase() + status.slice(1),
+        onPress: () => saveStatus(order.id, status),
+      })),
+    ]);
   };
 
   const saveStatus = async (orderId: string, status: string) => {
@@ -145,23 +139,41 @@ export default function AdminOrdersScreen() {
         throw new Error("Admin permission is required.");
       }
 
-      await updateDoc(doc(db, "orders", orderId), {
-        status,
-        updatedAt: new Date(),
-      });
+      const response = await fetch(
+        "https://aquapure-payment-api.onrender.com/admin/order-status",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token.token}`,
+          },
+          body: JSON.stringify({ orderId, status }),
+        },
+      );
+
+      const result = await response.json();
+
+      if (!response.ok || !result.success) {
+        throw new Error(result.error || "Could not update order status.");
+      }
 
       setOrders((previous) =>
         previous.map((order) =>
-          order.id === orderId ? { ...order, status } : order
-        )
+          order.id === orderId ? { ...order, status } : order,
+        ),
       );
 
-      Alert.alert("Success", `Order status changed to ${status}.`);
+      Alert.alert(
+        "Success",
+        result.notificationSent
+          ? `Order status changed to ${status}. Notification accepted by Expo.`
+          : `Order status changed to ${status}. ${result.message}`,
+      );
     } catch (error) {
       console.error("Update order error:", error);
       Alert.alert(
         "Update failed",
-        error instanceof Error ? error.message : "Please try again."
+        error instanceof Error ? error.message : "Please try again.",
       );
     } finally {
       setUpdatingId(null);
@@ -203,9 +215,7 @@ export default function AdminOrdersScreen() {
         </TouchableOpacity>
 
         <Text style={styles.title}>Manage Orders</Text>
-        <Text style={styles.subtitle}>
-          {orders.length} total orders
-        </Text>
+        <Text style={styles.subtitle}>{orders.length} total orders</Text>
       </View>
 
       <FlatList
@@ -251,25 +261,17 @@ export default function AdminOrdersScreen() {
           />
         }
         contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No orders found.</Text>
-        }
+        ListEmptyComponent={<Text style={styles.empty}>No orders found.</Text>}
         renderItem={({ item }) => (
           <View style={styles.card}>
             <View style={styles.orderHeader}>
               <View style={{ flex: 1 }}>
-                <Text style={styles.orderId}>
-                  Order #{item.id.slice(-6)}
-                </Text>
-                <Text style={styles.date}>
-                  {formatDate(item.createdAt)}
-                </Text>
+                <Text style={styles.orderId}>Order #{item.id.slice(-6)}</Text>
+                <Text style={styles.date}>{formatDate(item.createdAt)}</Text>
               </View>
 
               <View style={styles.statusBadge}>
-                <Text style={styles.statusText}>
-                  {item.status || "placed"}
-                </Text>
+                <Text style={styles.statusText}>{item.status || "placed"}</Text>
               </View>
             </View>
 
@@ -296,13 +298,18 @@ export default function AdminOrdersScreen() {
             </Text>
 
             {(item.items || []).map((product, index) => (
-              <View key={`${product.productId}-${index}`} style={styles.itemRow}>
+              <View
+                key={`${product.productId}-${index}`}
+                style={styles.itemRow}
+              >
                 <Text style={styles.itemName}>
                   {product.name} × {product.quantity}
                 </Text>
                 <Text style={styles.itemPrice}>
-                  ₹{(product.subtotal ?? product.price * product.quantity)
-                    .toLocaleString("en-IN")}
+                  ₹
+                  {(
+                    product.subtotal ?? product.price * product.quantity
+                  ).toLocaleString("en-IN")}
                 </Text>
               </View>
             ))}
@@ -337,9 +344,7 @@ export default function AdminOrdersScreen() {
               onPress={() => changeStatus(item)}
             >
               <Text style={styles.updateButtonText}>
-                {updatingId === item.id
-                  ? "Updating..."
-                  : "Update Order Status"}
+                {updatingId === item.id ? "Updating..." : "Update Order Status"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -386,45 +391,45 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   filterList: {
-  flexGrow: 0,
-  flexShrink: 0,
-  height: 54,
-},
+    flexGrow: 0,
+    flexShrink: 0,
+    height: 54,
+  },
 
-filters: {
-  paddingHorizontal: 16,
-  paddingVertical: 6,
-  gap: 8,
-  alignItems: "center",
-},
+  filters: {
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    gap: 8,
+    alignItems: "center",
+  },
 
-filterButton: {
-  borderWidth: 1,
-  borderColor: "#C8DDE2",
-  borderRadius: 22,
-  paddingHorizontal: 14,
-  paddingVertical: 9,
-  backgroundColor: "#FFFFFF",
-  justifyContent: "center",
-  alignItems: "center",
-  minHeight: 38,
-},
+  filterButton: {
+    borderWidth: 1,
+    borderColor: "#C8DDE2",
+    borderRadius: 22,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    backgroundColor: "#FFFFFF",
+    justifyContent: "center",
+    alignItems: "center",
+    minHeight: 38,
+  },
 
-filterActive: {
-  backgroundColor: "#087E8B",
-  borderColor: "#087E8B",
-},
+  filterActive: {
+    backgroundColor: "#087E8B",
+    borderColor: "#087E8B",
+  },
 
-filterText: {
-  color: "#36545D",
-  fontSize: 13,
-  fontWeight: "700",
-  includeFontPadding: true,
-},
+  filterText: {
+    color: "#36545D",
+    fontSize: 13,
+    fontWeight: "700",
+    includeFontPadding: true,
+  },
 
-filterTextActive: {
-  color: "#FFFFFF",
-},
+  filterTextActive: {
+    color: "#FFFFFF",
+  },
   list: {
     padding: 14,
     paddingBottom: 30,
