@@ -8,15 +8,10 @@ import {
   Text,
   TouchableOpacity,
   View,
+  Modal,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import {
-  collection,
-  doc,
-  getDocs,
-  orderBy,
-  query,
-} from "firebase/firestore";
+import { collection, doc, getDocs, orderBy, query } from "firebase/firestore";
 import { getIdTokenResult } from "firebase/auth";
 import { auth, db } from "../../firebase";
 
@@ -59,6 +54,8 @@ export default function AdminOrdersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [filter, setFilter] = useState("all");
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [statusModalVisible, setStatusModalVisible] = useState(false);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -110,17 +107,8 @@ export default function AdminOrdersScreen() {
   );
 
   const changeStatus = (order: Order) => {
-    const availableStatuses = ORDER_STATUSES.filter(
-      (status) => status !== order.status,
-    );
-
-    Alert.alert("Update order status", `Order #${order.id.slice(-6)}`, [
-      { text: "Cancel", style: "cancel" },
-      ...availableStatuses.map((status) => ({
-        text: status.charAt(0).toUpperCase() + status.slice(1),
-        onPress: () => saveStatus(order.id, status),
-      })),
-    ]);
+    setSelectedOrder(order);
+    setStatusModalVisible(true);
   };
 
   const saveStatus = async (orderId: string, status: string) => {
@@ -350,6 +338,85 @@ export default function AdminOrdersScreen() {
           </View>
         )}
       />
+
+      <Modal
+        visible={statusModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setStatusModalVisible(false)}
+      >
+        <View
+          style={{
+            flex: 1,
+            backgroundColor: "rgba(0,0,0,0.5)",
+            justifyContent: "center",
+            alignItems: "center",
+            padding: 20,
+          }}
+        >
+          <View
+            style={{
+              backgroundColor: "#FFFFFF",
+              borderRadius: 16,
+              padding: 22,
+              width: "100%",
+              maxWidth: 400,
+            }}
+          >
+            <Text style={{ fontSize: 20, fontWeight: "700", marginBottom: 6 }}>
+              Update order status
+            </Text>
+
+            <Text style={{ color: "#64748B", marginBottom: 18 }}>
+              Order #{selectedOrder?.id.slice(-6)}
+            </Text>
+
+            {ORDER_STATUSES.filter(
+              (status) => status !== selectedOrder?.status,
+            ).map((status) => (
+              <TouchableOpacity
+                key={status}
+                disabled={
+                  selectedOrder ? updatingId === selectedOrder.id : true
+                }
+                onPress={async () => {
+                  if (!selectedOrder) return;
+
+                  const orderId = selectedOrder.id;
+                  setStatusModalVisible(false);
+                  await saveStatus(orderId, status);
+                }}
+                style={{
+                  paddingVertical: 13,
+                  paddingHorizontal: 14,
+                  borderRadius: 8,
+                  backgroundColor: "#F1F5F9",
+                  marginBottom: 8,
+                }}
+              >
+                <Text
+                  style={{
+                    color: "#0F172A",
+                    fontSize: 16,
+                    fontWeight: "600",
+                  }}
+                >
+                  {status.charAt(0).toUpperCase() + status.slice(1)}
+                </Text>
+              </TouchableOpacity>
+            ))}
+
+            <TouchableOpacity
+              onPress={() => setStatusModalVisible(false)}
+              style={{ padding: 12, alignItems: "center" }}
+            >
+              <Text style={{ color: "#64748B", fontWeight: "600" }}>
+                Cancel
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
