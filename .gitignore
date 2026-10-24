@@ -49,6 +49,7 @@ example
 /android
 
 aquapure-3d28b-firebase-adminsdk-fbsvc-e819c2ae7a.json
+google-services.json
 
 # Backend secrets and dependencies
 backend/.env
