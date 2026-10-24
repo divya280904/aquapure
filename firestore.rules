@@ -1,0 +1,76 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && request.auth.token.admin == true;
+    }
+
+    // 1. Users collection: Private profiles with least privilege
+    match /users/{userId} {
+      // Users can read their own profile; admins can read any user profile
+      allow read: if isOwner(userId) || isAdmin();
+
+      // Users can create their own profile upon registration (cannot self-grant admin or dealer role)
+      allow create: if isOwner(userId) &&
+        request.resource.data.role == "customer" &&
+        (!('admin' in request.resource.data) || request.resource.data.admin == false);
+
+      // Users can update their basic details (name, phone, address, expoPushToken);
+      // only admins can grant dealer or admin roles or approve dealers
+      allow update: if (isOwner(userId) &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role', 'admin', 'dealerStatus'])
+      ) || isAdmin();
+
+      // Delete: admin only
+      allow delete: if isAdmin();
+    }
+
+    // 2. Products collection: Public catalog, admin-only writes
+    match /products/{productId} {
+      allow read: if true; // Public catalog access for customers & dealers
+      allow create, update, delete: if isAdmin(); // Server-side admin authorization
+    }
+
+    // 3. Orders collection: Users read their own, create pending; admin manages status
+    match /orders/{orderId} {
+      // Customers read their own orders; admins read all orders
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+
+      // Customers can create orders with their own userId
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+
+      // Status updates and order alterations: admin only
+      allow update, delete: if isAdmin();
+    }
+
+    // 4. Service Requests: Customer booking, admin desk management
+    match /serviceRequests/{requestId} {
+      // Customers read their own requests; admins read all requests
+      allow read: if (isAuthenticated() && resource.data.userId == request.auth.uid) || isAdmin();
+
+      // Customers can submit service requests with their own userId
+      allow create: if isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid;
+
+      // Admin updates status (scheduled, in_progress, completed, cancelled)
+      allow update, delete: if isAdmin();
+    }
+
+    // 5. Payment Checkouts: Trusted server-side operations only
+    match /paymentCheckouts/{checkoutId} {
+      allow read, write: if isAdmin();
+    }
+  }
+}

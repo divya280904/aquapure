@@ -22,6 +22,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth, db } from "../../firebase";
 import { useCart } from "../context/CartContext";
 import { WebView } from "react-native-webview";
+import { API_BASE_URL } from "../constants/api";
 
 type CheckoutItem = {
   productId: string;
@@ -65,6 +66,16 @@ export default function CheckoutScreen() {
           userData?.role === "dealer" && userData?.dealerStatus === "approved";
 
         setIsDealer(approvedDealer);
+
+        if (userData?.name || user.displayName) {
+          setName((prev) => prev || userData?.name || user.displayName || "");
+        }
+        if (userData?.phone) {
+          setPhone((prev) => prev || userData?.phone || "");
+        }
+        if (userData?.address) {
+          setAddress((prev) => prev || userData?.address || "");
+        }
 
         const loadedItems: CheckoutItem[] = [];
 
@@ -140,7 +151,7 @@ export default function CheckoutScreen() {
       const token = await user.getIdToken();
 
       const response = await fetch(
-        "https://aquapure-payment-api.onrender.com/create-order",
+        `${API_BASE_URL}/create-order`,
         {
           method: "POST",
           headers: {
@@ -174,8 +185,7 @@ export default function CheckoutScreen() {
         name: "AquaPure",
         description: "Water purifier products",
         order_id: data.orderId,
-        callback_url:
-          "https://aquapure-payment-api.onrender.com/razorpay-callback",
+        callback_url: `${API_BASE_URL}/razorpay-callback`,
         redirect: true,
         prefill: {
           name: data.customerName,
@@ -324,7 +334,7 @@ export default function CheckoutScreen() {
         throw new Error("Your cart has no available products.");
       }
 
-      await addDoc(collection(db, "orders"), {
+      const docRef = await addDoc(collection(db, "orders"), {
         userId: user.uid,
         customerName: name.trim(),
         email: user.email ?? "",
@@ -337,6 +347,23 @@ export default function CheckoutScreen() {
         status: "placed",
         createdAt: serverTimestamp(),
       });
+
+      // Dispatch multi-channel notifications (Push, Email, SMS) via backend
+      user
+        .getIdToken()
+        .then((authToken) => {
+          fetch(`${API_BASE_URL}/notify/order-confirmation`, {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${authToken}`,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ orderId: docRef.id }),
+          }).catch((err) =>
+            console.log("Order confirmation notification dispatch error:", err)
+          );
+        })
+        .catch((tErr) => console.log("Auth token error:", tErr));
 
       clearCart();
 
@@ -484,7 +511,6 @@ export default function CheckoutScreen() {
       <Text style={styles.label}>Full name</Text>
       <TextInput
         style={styles.input}
-        placeholder="Enter your full name"
         value={name}
         onChangeText={setName}
       />
@@ -492,7 +518,6 @@ export default function CheckoutScreen() {
       <Text style={styles.label}>Mobile number</Text>
       <TextInput
         style={styles.input}
-        placeholder="10-digit mobile number"
         value={phone}
         onChangeText={setPhone}
         keyboardType="phone-pad"
@@ -502,7 +527,6 @@ export default function CheckoutScreen() {
       <Text style={styles.label}>Delivery address</Text>
       <TextInput
         style={[styles.input, styles.address]}
-        placeholder="House number, street, city, state, PIN code"
         value={address}
         onChangeText={setAddress}
         multiline

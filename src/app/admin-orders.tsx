@@ -15,6 +15,7 @@ import { collection, doc, getDocs, orderBy, query } from "firebase/firestore";
 import { getIdTokenResult } from "firebase/auth";
 import { auth, db } from "../../firebase";
 import { waitForAuth } from "@/utils/waitForAuth";
+import { API_BASE_URL } from "../constants/api";
 
 type OrderItem = {
   productId: string;
@@ -128,7 +129,7 @@ export default function AdminOrdersScreen() {
       }
 
       const response = await fetch(
-        "https://aquapure-payment-api.onrender.com/admin/order-status",
+        `${API_BASE_URL}/admin/order-status`,
         {
           method: "POST",
           headers: {

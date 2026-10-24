@@ -38,6 +38,7 @@ type Product = {
   category: Category;
   price: number;
   dealerPrice: number;
+  imageUrl?: string;
 };
 
 export default function AdminProductsScreen() {
@@ -54,6 +55,7 @@ export default function AdminProductsScreen() {
   const [category, setCategory] = useState<Category>("Purifiers");
   const [price, setPrice] = useState("");
   const [dealerPrice, setDealerPrice] = useState("");
+  const [imageUrl, setImageUrl] = useState("");
 
   async function checkAdmin() {
     const user = auth.currentUser;
@@ -90,6 +92,7 @@ export default function AdminProductsScreen() {
           category: validCategory as Category,
           price: Number(data.price ?? 0),
           dealerPrice: Number(data.dealerPrice ?? 0),
+          imageUrl: data.imageUrl ? String(data.imageUrl) : undefined,
         };
       });
 
@@ -147,6 +150,7 @@ export default function AdminProductsScreen() {
     setCategory("Purifiers");
     setPrice("");
     setDealerPrice("");
+    setImageUrl("");
   }
 
   function startEditing(product: Product) {
@@ -155,6 +159,7 @@ export default function AdminProductsScreen() {
     setCategory(product.category);
     setPrice(String(product.price));
     setDealerPrice(String(product.dealerPrice));
+    setImageUrl(product.imageUrl || "");
   }
 
   async function saveProduct() {
@@ -195,6 +200,7 @@ export default function AdminProductsScreen() {
         category,
         price: retailPrice,
         dealerPrice: wholesalePrice,
+        imageUrl: imageUrl.trim() || null,
       };
 
       if (editingId) {
@@ -338,6 +344,16 @@ export default function AdminProductsScreen() {
           onChangeText={setDealerPrice}
           placeholder="Dealer price (₹)"
           keyboardType="decimal-pad"
+          placeholderTextColor="#81939B"
+          style={styles.input}
+        />
+
+        <TextInput
+          value={imageUrl}
+          onChangeText={setImageUrl}
+          placeholder="Product image URL (https://...)"
+          autoCapitalize="none"
+          keyboardType="url"
           placeholderTextColor="#81939B"
           style={styles.input}
         />

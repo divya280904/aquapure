@@ -33,6 +33,7 @@ export default function CartScreen() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDealer, setIsDealer] = useState(false);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
     let mounted = true;
@@ -138,15 +139,18 @@ export default function CartScreen() {
 
               return (
                 <View style={styles.card}>
-                  {item.imageUrl ? (
+                  {item.imageUrl && !failedImages[item.id] ? (
                     <Image
                       source={{ uri: item.imageUrl }}
                       style={styles.productImage}
                       resizeMode="contain"
+                      onError={() =>
+                        setFailedImages((prev) => ({ ...prev, [item.id]: true }))
+                      }
                     />
                   ) : (
                     <View style={styles.placeholder}>
-                      <Text style={styles.productEmoji}>{item.emoji}</Text>
+                      <Text style={styles.productEmoji}>{item.emoji || "💧"}</Text>
                     </View>
                   )}
 

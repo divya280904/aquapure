@@ -164,6 +164,7 @@ export default function HomeScreen() {
 
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
+  const [failedImages, setFailedImages] = useState<Record<string, boolean>>({});
 
   const [isApprovedDealer, setIsApprovedDealer] = useState(false);
   const [checkingAccount, setCheckingAccount] = useState(true);
@@ -449,17 +450,17 @@ export default function HomeScreen() {
           <View style={styles.card}>
             <View style={styles.productImage}>
               <View style={styles.productPhotoContainer}>
-                {item.imageUrl ? (
+                {item.imageUrl && !failedImages[item.id] ? (
                   <Image
                     source={{ uri: item.imageUrl }}
                     style={styles.productPhoto}
                     resizeMode="contain"
-                    onError={() =>
-                      console.log("Image failed:", item.name, item.imageUrl)
-                    }
+                    onError={() => {
+                      setFailedImages((prev) => ({ ...prev, [item.id]: true }));
+                    }}
                   />
                 ) : (
-                  <Text style={styles.productEmoji}>{item.emoji}</Text>
+                  <Text style={styles.productEmoji}>{item.emoji || "💧"}</Text>
                 )}
               </View>
 

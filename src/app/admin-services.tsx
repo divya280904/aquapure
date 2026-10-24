@@ -3,6 +3,8 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Linking,
+  Platform,
   Pressable,
   RefreshControl,
   StyleSheet,
@@ -22,6 +24,8 @@ import {
 import { getIdTokenResult } from "firebase/auth";
 import { auth, db } from "../../firebase";
 import { waitForAuth } from "@/utils/waitForAuth";
+import { Ionicons } from "@expo/vector-icons";
+import { API_BASE_URL } from "../constants/api";
 
 type ServiceRequest = {
   id: string;
@@ -30,6 +34,8 @@ type ServiceRequest = {
   email: string;
   phone: string;
   address: string;
+  latitude?: number;
+  longitude?: number;
   serviceType: string;
   preferredDate?: string | null;
   description?: string;
@@ -127,6 +133,24 @@ export default function AdminServicesScreen() {
     }, [loadRequests]),
   );
 
+  function openInMap(address: string, lat?: number, lng?: number) {
+    let url = "";
+    if (lat != null && lng != null && Number.isFinite(lat) && Number.isFinite(lng)) {
+      url = Platform.select({
+        ios: `maps:0,0?q=${lat},${lng}`,
+        android: `geo:${lat},${lng}?q=${lat},${lng}(AquaPure+Service)`,
+        default: `https://www.google.com/maps/search/?api=1&query=${lat},${lng}`,
+      });
+    } else {
+      url = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`;
+    }
+
+    Linking.openURL(url).catch((err) => {
+      console.warn("Could not open native map URL:", err);
+      Linking.openURL(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address)}`);
+    });
+  }
+
   async function updateStatus(requestId: string, newStatus: string) {
     try {
       setUpdatingId(requestId);
@@ -139,10 +163,28 @@ export default function AdminServicesScreen() {
         throw new Error("Administrator permission is required.");
       }
 
-      await updateDoc(doc(db, "serviceRequests", requestId), {
-        status: newStatus,
-        updatedAt: new Date(),
-      });
+      // Route update through backend to trigger server-side authorization and Multi-Channel Notifications (Push, Email, SMS)
+      try {
+        const response = await fetch(`${API_BASE_URL}/admin/service-status`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token.token}`,
+          },
+          body: JSON.stringify({ requestId, status: newStatus }),
+        });
+
+        const result = await response.json();
+        if (!response.ok || !result.success) {
+          throw new Error(result.error || "Backend update failed");
+        }
+      } catch (backendError) {
+        console.warn("Backend service status call failed, using client fallback:", backendError);
+        await updateDoc(doc(db, "serviceRequests", requestId), {
+          status: newStatus,
+          updatedAt: new Date(),
+        });
+      }
 
       setRequests((previous) =>
         previous.map((request) =>
@@ -286,7 +328,22 @@ export default function AdminServicesScreen() {
             <Text style={styles.customerName}>{item.customerName}</Text>
             <Text style={styles.detail}>☎ {item.phone}</Text>
             {!!item.email && <Text style={styles.detail}>✉ {item.email}</Text>}
-            <Text style={styles.detail}>Address: {item.address}</Text>
+            
+            <View style={styles.addressBox}>
+              <Text style={styles.detail}>Address: {item.address}</Text>
+              {item.latitude != null && item.longitude != null && (
+                <Text style={styles.coordsBadge}>
+                  📍 GPS: {Number(item.latitude).toFixed(5)}, {Number(item.longitude).toFixed(5)}
+                </Text>
+              )}
+              <Pressable
+                style={styles.openMapButton}
+                onPress={() => openInMap(item.address, item.latitude, item.longitude)}
+              >
+                <Ionicons name="map-outline" size={14} color="#087E8B" />
+                <Text style={styles.openMapText}>Open in Map</Text>
+              </Pressable>
+            </View>
 
             <View style={styles.infoBox}>
               <Text style={styles.infoLabel}>Preferred date</Text>
@@ -548,5 +605,42 @@ const styles = StyleSheet.create({
   },
   updating: {
     marginTop: 10,
+  },
+  addressBox: {
+    backgroundColor: "#F8FBFC",
+    borderWidth: 1,
+    borderColor: "#E2EEF1",
+    borderRadius: 8,
+    padding: 10,
+    marginTop: 8,
+  },
+  coordsBadge: {
+    color: "#087E8B",
+    fontSize: 11,
+    fontWeight: "700",
+    marginTop: 4,
+    backgroundColor: "#E4F3F5",
+    alignSelf: "flex-start",
+    paddingVertical: 3,
+    paddingHorizontal: 8,
+    borderRadius: 6,
+  },
+  openMapButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#E8F4F7",
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    alignSelf: "flex-start",
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#C6E4EA",
+  },
+  openMapText: {
+    color: "#087E8B",
+    fontSize: 12,
+    fontWeight: "700",
   },
 });
